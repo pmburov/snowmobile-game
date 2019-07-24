@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html class="">
+<head>
+    <title>Stupid Game</title>
+    <style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+    .info {
+    	position: fixed;
+    	z-index: 100;
+    	left: 0;
+    	bottom: 0;
+
+    	padding: 1rem;
+
+    	border-radius: 0 0.5rem 0 0;
+
+    	background: rgba(0,0,0,0.6);
+    	color: #ffffff;
+    }
+    .overlay {
+    	position: fixed;
+    	top: 0;
+    	left: 0;
+
+    	width: 100%;
+    	height: 100%;
+
+    	background: rgba(0,0,0,0.5);
+
+    	z-index: 100;
+
+    	transition: all 0.4s;
+    }
+    .dialog {
+    	position: fixed;
+    	top: 50%;
+    	left: 50%;
+
+    	padding: 2rem 4rem;
+    	border-radius: 0.5rem;
+
+    	background: rgba(0,0,0,0.5);
+    	color: #ffffff;
+
+    	transform: translateX(-50%) translateY(-50%);
+    }
+    .hide {
+    	visibility: hidden;
+    	opacity: 0;
+    	pointer-events: none;
+    }
+    </style>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1">
+	<script>
+		var isMobile = false;
+		var html = document.querySelector('html');
+		switch (navigator.platform) {
+			case 'iPhone':
+				isMobile = true;
+				html.classList.add('is-mobile');
+			break;
+			case 'iPad':
+			break;
+			default:
+			break;
+		}
+	</script>
+	<link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+	<div id="container"></div>
+	<div class="curtain"></div>
+	<div class="progressbar"><div class="bar"></div></div>
+	
+	<div on-screen-keys class="buttons">
+        <div class="button" on-screen-key="up" id="up"><span></span></div>
+        <div class="button" on-screen-key="left" id="left"><span></span></div>
+        <div class="button" on-screen-key="down" id="down"><span></span></div>
+        <div class="button" on-screen-key="right" id="right"><span></span></div>
+    </div>
+
+    <div class="vr-button"></div>
+
+    <div class="info">
+    	<div>Distance: <span class="dist">0</span></div>
+    	<div>Trees: <span class="trees">0</span></div>
+    	<div>Coins: <span class="coins">0</span></div>
+    </div>
+
+    <div class="modal overlay hide">
+    	<div class="dialog gameover hide">
+    		<h3>Game Over</h3>
+    		<div class="results">
+    			Results:
+    			<div>Distance: <span class="dist">0</span></div>
+		    	<div>Coins: <span class="coins">0</span></div>
+    		</div>
+    	</div>
+    	<div class="dialog win hide">
+    		<h3>Victory</h3>
+    		<div class="results">
+    			Results:
+    			<div>Distance: <span class="dist">0</span></div>
+		    	<div>Coins: <span class="coins">0</span></div>
+    		</div>
+    	</div>
+    </div>
+
+    <script src="js/three.min.js"></script>
+
+	<script src="js/loaders/MTLLoader.js"></script>
+	<script src="js/loaders/OBJLoader.js"></script>
+	<!-- <script src="js/loaders/ColladaLoader.js"></script> -->
+	<!-- <script src="js/loaders/BinaryLoader.js"></script> -->
+
+	<script src="js/Particles.js"></script>
+
+	<!-- <script src="js/shaders/CopyShader.js"></script>
+	<script src="js/shaders/DotScreenShader.js"></script>
+	<script src="js/shaders/RGBShiftShader.js"></script>
+
+	<script src="js/postprocessing/EffectComposer.js"></script>
+	<script src="js/postprocessing/RenderPass.js"></script>
+	<script src="js/postprocessing/MaskPass.js"></script>
+	<script src="js/postprocessing/ShaderPass.js"></script> -->
+
+    <!-- <script src="js/controls/OrbitControls.js"></script> -->
+    <!-- <script src="js/controls/DeviceOrientationControls.js"></script> -->
+    <!-- <script src="js/StereoEffect.js"></script> -->
+    
+    <script src="js/stats.min.js"></script>
+    
+    <script>
+	    var inVR = false;
+    	var stats;
+
+    	var sceneLoaded = false;
+
+		var camera, controls, scene, renderer, raycaster, mouse, composer;
+
+		var useOrbitControls = false;
+		var useCameraControls = false;
+		var useWASD = true;
+
+		var globalWidth = window.innerWidth;
+		var globalHeight = window.innerHeight;
+		if(globalWidth > globalHeight) html.classList.add('width');
+		else html.classList.add('height');
+
+		var objects = [];
+		var models = [];
+
+		var mouseDrag = false;
+
+		// wasd
+		var moveForward = false;
+		var moveBackward = false;
+		var moveLeft = false;
+		var moveRight = false;
+
+		var prevTime = performance.now();
+		var velocity = new THREE.Vector3();
+		var velocityZnum = 400.0;
+		var velocityXnum = 100.0;
+
+		var objLoader = new THREE.OBJLoader();
+
+		var dist = document.querySelector('.info .dist');
+		var trees = document.querySelector('.info .trees');
+		var coins = document.querySelector('.info .coins');
+		var overlay = document.querySelector('.overlay');
+		var gameover = document.querySelector('.gameover');
+		var win = document.querySelector('.win');
+		var skyMaterial;
+		var skyMaterial2;
+		var skyMaterial3;
+		var skyMaterial4;
+		var skySphere;
+		var snowmobile = null;
+		var treesNum = 0;
+		var coinsNum = 0;
+		var collidableMeshList = [];
+		var matrix = new THREE.Matrix4();
+		var direction = new THREE.Vector3( 0, 0, 1 );
+
+		var skyTextures = [
+			new THREE.TextureLoader().load( 'objects/sky.jpg' ),
+			new THREE.TextureLoader().load( 'objects/sky2.jpg' ),
+			new THREE.TextureLoader().load( 'objects/sky3.jpg' ),
+			new THREE.TextureLoader().load( 'objects/sky4.jpg' )
+		];
+
+		var sky = [
+			new THREE.MeshBasicMaterial({ map: skyTextures[0], side: THREE.BackSide }),
+			new THREE.MeshBasicMaterial({ map: skyTextures[1], side: THREE.BackSide }),
+			new THREE.MeshBasicMaterial({ map: skyTextures[2], side: THREE.BackSide }),
+			new THREE.MeshBasicMaterial({ map: skyTextures[3], side: THREE.BackSide })
+		];
+
+		preloadProgressbar();	
+
+		init();
+
+		generateParticles(scene);
+
+		Particle3D.particlesGroup.rotation.x = Math.PI/4.5;
+
+		function init() {
+
+			// Scene
+			scene = new THREE.Scene();
+			// scene.fog = new THREE.FogExp2( 0xfefefe, 0.025 ); /* cccccc */
+			scene.background = skyTextures[0];
+
+			// Reflections
+			// var textureCube = new THREE.CubeTextureLoader().setPath( 'img/sky/').load( [ 'right.jpg', 'left.jpg', 'top.jpg', 'bottom.jpg','front.jpg', 'back.jpg', ] );
+			var textureCube = new THREE.CubeTextureLoader().setPath( 'img/sky/').load( [ 'right.bmp', 'left.bmp', 'top.bmp', 'bottom.bmp','front.bmp', 'back.bmp', ] );
+			scene.background = textureCube;
+
+			// Renderer
+			renderer = new THREE.WebGLRenderer();
+			// renderer.setClearColor( scene.fog.color );
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( globalWidth, globalHeight );
+			renderer.shadowMap.enabled = true;
+
+			renderer.setColorMask = function(a,b,c,d) {
+				renderer.context.colorMask(a,b,c,d);
+			};
+
+			// effect = new THREE.StereoEffect( renderer );
+			// effect.setSize( globalWidth, globalHeight );
+
+			var container = document.getElementById( 'container' );
+			// container.appendChild( renderer.domElement );
+			document.body.appendChild( renderer.domElement );
+
+			// Camera
+			camera = new THREE.PerspectiveCamera( 40, globalWidth / globalHeight, 1, 150 );
+			camera.position.z = 10;
+			camera.position.y = 5;
+			camera.position.x = 2.5;
+			camera.rotation.y = Math.PI;
+
+			// Raycaster
+	        raycaster = new THREE.Raycaster();
+	        mouse = new THREE.Vector2();
+
+			// Controls Orbit
+			
+			// if(useOrbitControls && !inVR) {
+			// 	camera.position.z = 10;
+			// 	camera.position.y = 6;
+			// 	camera.position.x = 20;
+
+			// 	controls = new THREE.OrbitControls( camera, renderer.domElement );
+			// 	controls.enableDamping = true;
+			// 	controls.dampingFactor = 0.25;
+			// 	controls.maxPolarAngle = Math.PI/2-0.12;
+			// 	// controls.minPolarAngle = Math.PI/2-0.5;
+			// 	// controls.zoomSpeed = 0.5;
+			// 	// controls.minDistance = 18;
+			// 	// controls.maxDistance = 18;
+			// }
+
+			// Controls Device
+			// deviceControls = new THREE.DeviceOrientationControls( camera );
+
+			// Skydome
+			var skyGeometry = new THREE.SphereGeometry( 200, 52, 52 );
+			skyMaterial = sky[0];
+			skySphere = new THREE.Mesh( skyGeometry, skyMaterial );
+			// skySphere.position.y = 10;
+			skySphere.name = 'skydome';
+			// scene.add(skySphere);
+			// objects.push(skySphere);
+
+			// Floor
+			// var floorMaterial = new THREE.MeshPhongMaterial( { color: 0x00ff00 /*map: new THREE.TextureLoader().load( 'img/env/bottom.jpg' )*/, side: THREE.DoubleSide } );
+			// var floorGeometry = new THREE.PlaneGeometry(90, 90, 10, 10);
+			// var floor = new THREE.Mesh(floorGeometry, floorMaterial);
+			// floor.rotation.x = Math.PI / 2;
+			// floor.name = 'floor';
+			// scene.add(floor);
+			// objects.push(floor);
+			var snowTexture = new THREE.TextureLoader().load( 'img/env/snow1.jpg' );
+			snowTexture.wrapS = THREE.RepeatWrapping;
+			snowTexture.wrapT = THREE.RepeatWrapping;
+			snowTexture.repeat.set( 1, 200 );
+			var floorMaterial = new THREE.MeshBasicMaterial( { color: 0xffffff, map: snowTexture, side: THREE.DoubleSide } );
+			var floorGeometry = new THREE.PlaneGeometry(5, 2000);
+			var road = new THREE.Mesh(floorGeometry, floorMaterial);
+			road.rotation.x = Math.PI / 2;
+			road.position.x = 2.5;
+			road.position.z = 900;
+			road.name = 'road';
+			scene.add(road);
+
+			var leftsidegeometry = new THREE.PlaneGeometry( 10, 2000, 10, 300);
+			for (var i = 0, l = leftsidegeometry.vertices.length; i < l; i++) {
+ 				if(leftsidegeometry.vertices[i].x == 5 || leftsidegeometry.vertices[i].x == -5) leftsidegeometry.vertices[i].z = 0;
+ 				else leftsidegeometry.vertices[i].z = -getRandomIntInclusive(0,2); //data[i] / 65535 * 25;
+			}
+ // leftsidegeometry.vertices[i].z = -getRandomIntInclusive(0.0,1.0);
+			var leftside = new THREE.Mesh(leftsidegeometry, floorMaterial);
+			leftside.rotation.x = Math.PI/2;
+			leftside.position.x = 10;
+			leftside.position.z = 900;
+			leftside.name = 'leftside';
+
+			scene.add(leftside);
+
+			var rightside = new THREE.Mesh(leftsidegeometry, floorMaterial);
+			rightside.rotation.x = Math.PI/2;
+			rightside.position.x = -5;
+			rightside.position.z = 900;
+			rightside.name = 'rightside';
+			scene.add(rightside);
+
+
+				// var vertices = geometry.attributes.position.array;
+
+			// Level
+			generateLevel(scene);
+
+			var mtlLoader = new THREE.MTLLoader();
+			mtlLoader.setPath( 'models/snowmobile/' );
+			// mtlLoader.setPath( 'models/brp2/' );
+			mtlLoader.load( 'snowmobile.mtl', function( materials ) {
+			// mtlLoader.load( 'BRP_Lynx_Xtrim_SC_900_ACE_2015.mtl', function( materials ) {
+
+				materials.preload();
+
+				
+				objLoader.setMaterials( materials );
+				objLoader.setPath( 'models/snowmobile/' );
+				objLoader.load( 'snowmobile.obj', function ( object ) {
+
+					object.name = 'snowmobile';
+
+					object.scale.x = 0.2;
+					object.scale.y = 0.2;
+					object.scale.z = 0.2;
+
+					// object.position.y = 0;
+					object.position.z = 14;
+					object.position.x = 2.5;
+
+					var count = 0;
+
+					object.traverse( function(child) {
+						if (child instanceof THREE.Mesh) {
+
+							if(count == 0) {
+								child.name = 'fullbody';
+								child.material = new THREE.MeshLambertMaterial( { color: 0xaa0000, /*envMap: textureCube,*/ combine: THREE.MixOperation, reflectivity: 0.6 } );
+							}
+
+							if(count == 2) {
+								child.name = 'windshield';
+								child.visible = false;
+								child.material = new THREE.MeshBasicMaterial( { color: 0x223344, /*envMap: textureCube,*/ opacity: 0.25, transparent: true, combine: THREE.MixOperation, reflectivity: 0.25, side: THREE.DoubleSide } );
+							}
+							
+							count++;
+
+							// // enable casting shadows
+							child.castShadow = true;
+							child.receiveShadow = true;
+						}
+					});
+
+					scene.add( object );
+					snowmobile = object;
+
+				}, onProgress, onError );
+			});
+
+			// lights
+
+			var directionalLight, pointLight;
+
+			var ambient = new THREE.AmbientLight( 0x050505, 2 );
+			// ambient.castShadow = true;
+			scene.add( ambient );
+
+			directionalLight = new THREE.DirectionalLight( 0xffffff, 2 );
+			directionalLight.position.set( 2, 1.2, 10 ).normalize();
+			// scene.add( directionalLight );
+
+			// scene.add( new THREE.DirectionalLightHelper( directionalLight ) );
+
+			directionalLight = new THREE.DirectionalLight( 0xffffff, 1 );
+			directionalLight.position.set( -2, 1.2, -10 ).normalize();
+			// scene.add( directionalLight );
+
+			// scene.add( new THREE.DirectionalLightHelper( directionalLight ) );
+
+			pointLight = new THREE.PointLight( 0xf2eee2 , 0.9 ); //0xffaa00
+			pointLight.position.set( 8, 28, 8 );
+			pointLight.name = 'sun';
+			scene.add( pointLight );
+
+			// Helpers
+			// showHelpers(scene);
+			
+
+			// scene.add( new THREE.PointLightHelper( pointLight, 2 ) );
+
+			stats = new Stats();
+			container.appendChild( stats.dom );
+
+			// Test cube
+			// var cubegeometry = new THREE.BoxGeometry( 1, 1, 1 );
+			// var cubematerial = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
+			// testcube = new THREE.Mesh( cubegeometry, cubematerial );
+			// testcube.position.y = 3;
+			// scene.add( testcube );
+
+			// postprocessing
+			// composer = new THREE.EffectComposer( renderer );
+			// composer.addPass( new THREE.RenderPass( scene, camera ) );
+			// var effect = new THREE.ShaderPass( THREE.DotScreenShader );
+			// effect.uniforms[ 'scale' ].value = 4;
+			// composer.addPass( effect );
+			// var effect = new THREE.ShaderPass( THREE.RGBShiftShader );
+			// effect.uniforms[ 'amount' ].value = 0.0015;
+			// effect.renderToScreen = true;
+			// composer.addPass( effect );
+
+			// Events
+			window.addEventListener( 'resize', onWindowResize, false );
+
+			document.addEventListener( 'mousedown', onDocumentMouseDown, false );
+			document.addEventListener( 'mouseup', onDocumentMouseUp, false );
+	        document.addEventListener( 'touchstart', onDocumentTouchStart, false );
+
+	        document.addEventListener( 'mousemove', onMouseMove, false );
+
+	        document.addEventListener( 'keydown', onKeyDown, false );
+			document.addEventListener( 'keyup', onKeyUp, false );
+
+			document.addEventListener( 'onscreenkeydown', onKeyDown, false );
+			document.addEventListener( 'onscreenkeyup', onKeyUp, false );
+
+			animate();
+		}
+
+
+		function animate() {
+
+			// keep looping
+			requestAnimationFrame( animate );
+
+			if(sceneLoaded) cameraIntro(camera);
+
+			// wasd
+			if(useWASD) wasd(camera);
+
+			// env
+			if(snowmobile != null) {
+
+				if(snowmobile.position.z > 200) {
+					scene.background = skyTextures[1]; //skySphere.material = sky[1];
+					velocityZnum = 500;
+				} 
+				if(snowmobile.position.z > 600) {
+					scene.background = skyTextures[2]; //skySphere.material = sky[2];
+					velocityZnum = 600;
+				}
+				if(snowmobile.position.z > 800) {
+					scene.background = skyTextures[3]; //skySphere.material = sky[3];
+					velocityZnum = 700;
+				}
+				if(snowmobile.position.z > 1000) {
+					velocityZnum = 800;
+				}
+
+				if(snowmobile.position.z > 1500) {
+					stop();
+					win.classList.remove('hide');
+				}
+				// matrix.extractRotation( object.matrix );
+
+				// matrix.multiplyVector3( direction );
+				// var pos = snowmobile.position;
+				// pos.y = -0.5;
+				var cast = new THREE.Vector3( snowmobile.position.x, 0.3, snowmobile.position.z-1 );
+
+				raycaster.set( cast, direction );
+
+		        var intersects = raycaster.intersectObjects( objects, true ); /*  */
+		        
+		        if ( intersects.length > 0 ) {
+		        	
+		        	if(intersects[0].distance < 1.5) {
+		        		
+		        		if(intersects[0].object.isCoin) {
+		        			
+		        			coinsNum += 1;
+		        			coins.innerHTML = coinsNum;
+		        			intersects[0].object.visible = false;
+		        		} else {
+		        			
+		        			stop();
+		        			gameover.classList.remove('hide');
+		        			// treesNum += 1;
+		        			// trees.innerHTML = treesNum;
+		        			// intersects[0].object.visible = false;
+		        		}
+		        	}
+		        }	
+			}
+
+			if(inVR || isMobile) deviceControls.update();
+			else if(useOrbitControls) controls.update(); // required if controls.enableDamping = true, or if controls.autoRotate = true
+
+			// composer.render();
+			render();
+			stats.update();
+		}
+
+		function render() {
+
+			updateParticles();
+
+		    if(inVR) {
+		    	// effect.render( scene, camera );
+		    } else {
+			    renderer.render( scene, camera );
+		    }
+		}
+
+		// game functions
+		function getRandomIntInclusive(min, max) {
+			// min = Math.ceil(min);
+			// max = Math.floor(max);
+			return Math.floor(Math.random() * (max - min + 1)) + min;
+		}
+
+		function getRandomFloatInclusive(min, max) {
+			// min = Math.ceil(min);
+			// max = Math.floor(max);
+			return Math.random() * (max - min + 1) + min;
+		}
+
+		function stop() {
+			moveForward = false;
+			useWASD = false;
+
+			document.querySelector('.gameover .results .dist').innerHTML = parseInt(snowmobile.position.z);
+			document.querySelector('.win .results .dist').innerHTML = parseInt(snowmobile.position.z);
+			document.querySelector('.gameover .results .coins').innerHTML = coinsNum;
+			document.querySelector('.win .results .coins').innerHTML = coinsNum;
+			overlay.classList.remove('hide');
+		}
+
+		function restart() {
+			moveForward = true;
+			useWASD = true;
+		}
+
+		function generateLevel(scene) {
+
+			var cubegeometry = new THREE.BoxGeometry( 0.4, 0.4, 0.4 );
+			var cubematerials = [
+				new THREE.MeshPhongMaterial( {color: 0x00ff00, visible: false} ),
+				new THREE.MeshPhongMaterial( {color: 0xffff00} )
+			];
+			// var cubematerial = new THREE.MeshPhongMaterial( {color: 0x00ff00} );
+			// var cubematerialgood = new THREE.MeshPhongMaterial( {color: 0xffff00} );
+			var placeholders = [];
+
+			for(var z=30; z<1500; z+=7) {
+				// var placeholder = {};
+				// placeholder.position = {};
+				var rand = getRandomIntInclusive(0,1);
+				collisionObj = new THREE.Mesh( cubegeometry, cubematerials[rand] );
+				collisionObj.position.x = getRandomFloatInclusive(0.5,4.0);
+				collisionObj.position.z = z; //getRandomIntInclusive(i+1,2000);
+				collisionObj.position.y = 0.2;
+				if(rand == 1) {
+					collisionObj.isCoin = true;
+					collisionObj.position.y = 0.2;
+					// models.push(true);
+				}
+				else {
+					collisionObj.isCoin = false;
+					// models.push(false);
+				}
+				objects.push( collisionObj );
+				scene.add( collisionObj );
+				// placeholder.position.x = getRandomFloatInclusive(0.5,4.5);
+				// placeholder.position.z = z;
+				// placeholder.position.y = 0;
+				// if(rand == 1) placeholder.coin = true;
+				// else placeholder.coin = false;
+				// placeholders.push(placeholder);
+			}
+
+			// for(var z=20; z<1500; z+=5) {
+			// 	collisionObj = new THREE.Mesh( cubegeometry, cubematerials[0] );
+			// 	collisionObj.position.x = getRandomIntInclusive(-3,1);
+			// 	collisionObj.position.z = z;
+			// 	collisionObj.coin = false;
+			// 	objects.push( collisionObj );
+			// 	scene.add( collisionObj );
+			// }
+
+			// for(var z=20; z<1500; z+=5) {
+			// 	collisionObj = new THREE.Mesh( cubegeometry, cubematerials[0] );
+			// 	collisionObj.position.x = getRandomIntInclusive(5,7);
+			// 	collisionObj.position.z = z;
+			// 	collisionObj.coin = false;
+			// 	objects.push( collisionObj );
+			// 	scene.add( collisionObj );
+			// }
+
+			var treeLoader = new THREE.OBJLoader();
+			treeLoader.load( 'models/trees/tree.obj', function ( object ) {
+				
+				object.scale.x = 0.3;
+				object.scale.y = 0.3;
+				object.scale.z = 0.3;
+
+				var subs = [];
+				object.traverse( function(child) {
+					if (child instanceof THREE.Mesh) {
+						subs.push(child);
+						// objects.push(child);
+					}
+				});
+
+				subs[1].material = new THREE.MeshPhongMaterial( {color: 0x069820} );
+				subs[0].material = new THREE.MeshPhongMaterial( {color: 0x8e4545} );
+
+				for(var i=0; i<objects.length; i++) {
+				// for(var i=0; i<placeholders.length; i++) {
+					if(objects[i].isCoin) continue;
+					var tree = object.clone();
+					tree.position.y = 0;
+					tree.position.x = objects[i].position.x+0.15;
+					tree.position.z = objects[i].position.z-0.5;
+					scene.add(tree);
+				}
+			});
+
+			var coinLoader = new THREE.OBJLoader();
+			coinLoader.load( 'models/coin/coin.obj', function ( object ) {
+				
+				object.scale.x = 0.3;
+				object.scale.y = 0.3;
+				object.scale.z = 0.3;
+
+				object.rotation.y = Math.PI;
+				object.rotation.x = -Math.PI/2;
+
+				object.coin = true;
+
+				var subs = [];
+				object.traverse( function(child) {
+					if (child instanceof THREE.Mesh) {
+						subs.push(child);
+					}
+				});
+
+				// subs[1].material = new THREE.MeshPhongMaterial( {color: 0x069820} );
+				subs[0].material = new THREE.MeshPhongMaterial( {color: 0xf1ec14, side: THREE.DoubleSide} );
+
+				for(var i=0; i<objects.length; i++) {
+					if(!objects[i].isCoin) continue;
+					objects[i].geometry = subs[0].geometry;
+					// objects[i].rotation.x = -Math.PI/2;
+					objects[i].rotation.y = Math.PI;
+					objects[i].scale.x = 0.03;
+					objects[i].scale.y = 0.03;
+					objects[i].scale.z = 0.03;
+					objects[i].position.y = 0;
+					// var coinObj = object.clone();
+					// coin.position.y = 0.30;
+					// coin.position.x = objects[i].position.x;
+					// coin.position.z = objects[i].position.z;
+					// objects[i].add(coinObj);
+					// scene.add(coin);
+				}
+			});
+		}
+
+		function cameraIntro(camera) {
+			if(camera.position.y > 1) camera.position.y -= 0.04;
+			else {
+				camera.position.y = 1;
+				moveForward = true;
+			}
+		}
+
+		// Loader callbacks
+		function onProgress( xhr ) {
+			if ( xhr.lengthComputable ) {
+				var percentComplete = xhr.loaded / xhr.total * 100;
+				console.log( Math.round(percentComplete, 2) + '% downloaded' );
+			}
+		};
+		function onError( xhr ) { };
+
+
+		// Events
+		function onMouseMove( event ) {
+
+			var movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+			var movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+
+			// if(useCameraControls || mouseDrag && !inVR) {
+			// 	camera.rotation.y -= movementX * 0.002;
+			// 	camera.rotation.x -= movementY * 0.002;
+			// }
+			// pitchObject.rotation.x = Math.max( - PI_2, Math.min( PI_2, pitchObject.rotation.x ) );
+		};
+
+		// VR mode
+		var vrButton = document.querySelector('.vr-button');
+		vrButton.addEventListener('mouseup', function(e){
+			e.preventDefault();
+			inVR = !inVR;
+			html.classList.toggle('in-vr');
+			onWindowResize();
+		});
+		vrButton.addEventListener('touchend', function(e){
+			e.preventDefault();
+			inVR = !inVR;
+			html.classList.toggle('in-vr');
+			onWindowResize();
+		});
+
+		function pressVirtualKey(obj, downup) {
+        
+	        if(!obj) return;
+	        if(!downup) return;
+
+	        if(downup == 'down') downup = true;
+	        if(downup == 'up') downup = false;
+
+	        var attr = obj.getAttribute('on-screen-key');
+
+	        if (attr) switch (attr) {
+	            case 'up':
+	                if(downup) moveForward = true;
+	                else moveForward = false;
+	                break;
+	            case 'down':
+	                if(downup) moveBackward = true;
+	                else moveBackward = false;
+	                break;
+	            case 'left':
+	                if(downup) moveLeft = true;
+	                else moveLeft = false;
+	                break;
+	            case 'right':
+	                if(downup) moveRight = true;
+	                else moveRight = false;
+	                break;
+	            default:
+	                break;
+	        }
+	        //socket.emit('arrow', [code, keyCode]);
+	    }
+
+		var onscreenkeys = document.querySelectorAll('[on-screen-key]');
+	    if (onscreenkeys.length > 0) {
+	        
+	        for (var i = 0; i < onscreenkeys.length; i++) {
+
+	            onscreenkeys[i].addEventListener('mousedown', function(e) {
+	                e.preventDefault();
+	                this.classList.add('pressed');
+	                pressVirtualKey(this, 'down');
+	            }, false);
+
+	            onscreenkeys[i].addEventListener('mouseup', function(e) {
+	                e.preventDefault();
+	                this.classList.remove('pressed');
+	                pressVirtualKey(this, 'up');
+	            }, false);
+
+	            onscreenkeys[i].addEventListener('touchstart', function(e) {
+	                e.preventDefault();
+	                this.classList.add('pressed');
+	                pressVirtualKey(this, 'down');
+	            }, false);
+
+	            onscreenkeys[i].addEventListener('touchend', function(e) {
+	                e.preventDefault();
+	                this.classList.remove('pressed');
+	                pressVirtualKey(this, 'up');
+	            }, false);
+	        }
+	    }
+
+	    window.addEventListener("orientationchange", function() {
+	    	
+			globalWidth = window.innerWidth;
+			globalHeight = window.innerHeight;
+
+			camera.aspect = globalWidth / globalHeight;
+	        camera.updateProjectionMatrix();
+
+	        renderer.setSize( globalWidth, globalHeight );
+
+			switch (window.orientation) {  
+		    case 0:  
+		        // Portrait 
+		        inVR = false;
+		        html.classList.remove('in-vr');
+		        break; 
+		    case 180:  
+		        // Portrait (Upside-down)
+		        inVR = false;
+		        html.classList.remove('in-vr');
+		        break; 
+		    case -90:  
+		        // Landscape (Clockwise)
+		        break;  
+		    case 90:  
+		        // Landscape  (Counterclockwise)
+		        break;
+		    }
+		}, false);
+
+	    // gyro
+		window.addEventListener('devicemotion', function(event) {
+			// console.log(event.acceleration.x + ' m/s2');
+		});
+
+		// wasd
+		function wasd(camera) {
+
+			var time = performance.now();
+			var delta = ( time - prevTime ) / 1000;
+
+			velocity.x -= velocity.x * 12.0 * delta;
+			velocity.z -= velocity.z * 12.0 * delta;
+			velocity.y = 0;
+
+			// camera.position.y = 1;
+			if(camera.position.x > 5) camera.position.x = 5;
+			if(camera.position.x < 0) camera.position.x = 0;
+
+			if ( moveForward ) velocity.z += velocityZnum * delta;
+			if ( moveBackward ) velocity.z -= velocityZnum * delta;
+
+			if ( moveLeft ) velocity.x += velocityXnum * delta;
+			if ( moveRight ) velocity.x -= velocityXnum * delta;
+
+			if(snowmobile != null ) {
+				snowmobile.position.y = 0;
+				if(snowmobile.position.x > 4.5) snowmobile.position.x = 4.5;
+				if(snowmobile.position.x < 0.5) snowmobile.position.x = 0.5;
+
+				snowmobile.translateX( velocity.x * delta );
+				snowmobile.translateZ( velocity.z * delta );
+
+				snowmobile.rotation.y = velocity.x * delta;
+
+				dist.innerHTML = parseInt(snowmobile.position.z);
+			} 
+
+			// camera.translateX( velocity.x * delta );
+			// camera.translateY( velocity.y * delta );
+			
+			// camera.translateZ( velocity.z * delta );
+
+			// if(snowmobile != null ) {
+			// 	relativeCameraOffset = new THREE.Vector3(0,4,-14);
+			// 	cameraOffset = relativeCameraOffset.applyMatrix4( snowmobile.matrixWorld );
+			// }
+
+			// camera.position.x = cameraOffset.x;
+			// camera.position.y = cameraOffset.y;
+			// camera.position.z = cameraOffset.z;
+
+			if(snowmobile != null ) {
+				camera.position.x = snowmobile.position.x;
+				// camera.position.y = 1;
+				camera.position.z = snowmobile.position.z-4;
+
+				Particle3D.particlesGroup.position.z = snowmobile.position.z+40;
+			}
+
+			prevTime = time;
+		}
+
+		function onKeyDown( event ) {
+
+			switch ( event.keyCode ) {
+				case 38: // up
+				case 87: // w
+					moveForward = true;
+					break;
+				case 37: // left
+				case 65: // a
+					moveLeft = true; break;
+				case 40: // down
+				case 83: // s
+					moveBackward = true;
+					break;
+				case 39: // right
+				case 68: // d
+					moveRight = true;
+					break;
+				case 32: // space
+					moveForward = true;
+					break;
+			}
+		};
+		function onKeyUp( event ) {
+
+			switch( event.keyCode ) {
+				case 38: // up
+				case 87: // w
+					moveForward = false;
+					break;
+				case 37: // left
+				case 65: // a
+					moveLeft = false;
+					break;
+				case 40: // down
+				case 83: // s
+					moveBackward = false;
+					break;
+				case 39: // right
+				case 68: // d
+					moveRight = false;
+					break;
+			}
+		};
+
+		function onDocumentTouchStart( event ) {
+
+	        // event.preventDefault();
+	        event.clientX = event.touches[0].clientX;
+	        event.clientY = event.touches[0].clientY;
+	        onDocumentMouseDown( event );
+	    }
+
+		function onDocumentMouseDown( event ) {
+
+			// event.preventDefault();
+			mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+			mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+			mouseDrag = true;
+		}
+
+		function onDocumentMouseUp( event ) {
+
+			mouseDrag = false;
+
+			raycaster.setFromCamera( mouse, camera );
+
+	        var intersects = raycaster.intersectObjects( objects );
+
+	        var color = (Math.random() * 0xffffff);
+
+	        if ( intersects.length > 0 ) {
+	        	// if(intersects[0].object.name == 'kapot') {
+	        	// 	if(!intersects[0].object.closed) {
+	        	// 		intersects[0].object.rotation.x -= 0.5;
+	        	// 		intersects[0].object.closed = true;
+	        	// 	}
+	        	// 	else {
+	        	// 		intersects[0].object.rotation.x += 0.5;
+	        	// 		intersects[0].object.closed = false;	
+	        	// 	}
+	        	// }
+	        	// intersects[0].object.material.color.setHex( color );
+	        }
+		}
+
+		function onWindowResize() {
+
+			globalWidth = window.innerWidth;;
+			globalHeight = window.innerHeight;
+
+	        camera.aspect = globalWidth / globalHeight;
+	        camera.updateProjectionMatrix();
+
+	        renderer.setSize( globalWidth, globalHeight );
+	        // composer.setSize( globalWidth, globalHeight );
+
+			// if(inVR) effect.setSize( globalWidth, globalHeight );
+		}
+
+		function preloadProgressbar() {
+
+			THREE.DefaultLoadingManager.onStart = function ( url, itemsLoaded, itemsTotal ) {
+				// console.log( 'Started loading file: ' + url + '.\nLoaded ' + itemsLoaded + ' of ' + itemsTotal + ' files.' );
+			};
+
+			THREE.DefaultLoadingManager.onLoad = function ( ) {
+				// console.log( 'Loading Complete!');
+				document.querySelector('.curtain').classList.add('hide');
+				document.querySelector('.progressbar').classList.add('hide');
+				document.querySelector('html').classList.add('all-loaded');
+				sceneLoaded = true;
+				// init();
+			};
+
+
+			THREE.DefaultLoadingManager.onProgress = function ( url, itemsLoaded, itemsTotal ) {
+				// console.log( 'Loading file: ' + url + '.\nLoaded ' + itemsLoaded + ' of ' + itemsTotal + ' files.' );
+				document.querySelector('.progressbar .bar').style.width = parseInt(itemsLoaded*100/itemsTotal)+'%';
+			};
+
+			THREE.DefaultLoadingManager.onError = function ( url ) {
+				// console.log( 'There was an error loading ' + url );
+			};
+		}
+
+		function showHelpers(scene) {
+			var helper = new THREE.GridHelper( 200, 40, 0x0000ff, 0x808080 );
+			scene.add( helper );
+
+			var axisHelper = new THREE.AxisHelper( 20 );
+			scene.add( axisHelper );
+		}
+    </script>
+</body>
+
+</html>
